@@ -241,6 +241,10 @@ export class BrowserSession {
 	}
 
 	async doAction(action: (page: Page) => Promise<void>): Promise<BrowserActionResult> {
+		return this.doActionWithOptions(action, { fullPage: false })
+	}
+
+	async doActionWithOptions(action: (page: Page) => Promise<void>, options: { fullPage?: boolean } = {}): Promise<BrowserActionResult> {
 		if (!this.page) {
 			throw new Error(
 				"Browser is not launched. This may occur if the browser was automatically closed.",
@@ -282,12 +286,13 @@ export class BrowserSession {
 			interval: 100,
 		}).catch(() => {})
 
-		let options: ScreenshotOptions = {
+		let screenshotOptions: ScreenshotOptions = {
 			encoding: "base64",
+			fullPage: options.fullPage || false,
 		}
 
 		let screenshotBase64 = await this.page.screenshot({
-			...options,
+			...screenshotOptions,
 			type: "webp",
 			quality: parseInt(process.env.SCREENSHOT_QUALITY || "75"),
 		})
@@ -296,7 +301,7 @@ export class BrowserSession {
 		if (!screenshotBase64) {
 			console.error("webp screenshot failed, trying png")
 			screenshotBase64 = await this.page.screenshot({
-				...options,
+				...screenshotOptions,
 				type: "png",
 			})
 			screenshot = `data:image/png;base64,${screenshotBase64}`
