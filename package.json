@@ -1,0 +1,40 @@
+{
+  "name": "aironin-browse-core",
+  "version": "1.0.0",
+  "description": "Core aiRonin Browse functionality shared across CLI, MCP, and Extension",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.0.0",
+    "puppeteer-chromium-resolver": "^1.0.0",
+    "p-wait-for": "^5.0.0",
+    "delay": "^6.0.0",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  },
+  "author": "AI Ronin",
+  "license": "MIT",
+  "publisher": "aiRonin.us",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iRoninIT/aironin-browse-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iRoninIT/aironin-browse-core/issues"
+  },
+  "homepage": "https://github.com/iRoninIT/aironin-browse-core#readme"
+}
