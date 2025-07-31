@@ -1,8 +1,6 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { Browser, Page, type ScreenshotOptions, TimeoutError, launch, connect } from "puppeteer-core"
-// @ts-ignore
-import PCR from "puppeteer-chromium-resolver"
+import { Browser, Page, type ScreenshotOptions, TimeoutError, launch, connect } from "puppeteer"
 import pWaitFor from "p-wait-for"
 import delay from "delay"
 import { discoverChromeHostUrl, tryChromeHostUrl } from "./browserDiscovery.js"
@@ -10,11 +8,6 @@ import axios from "axios"
 
 // Timeout constants
 const BROWSER_NAVIGATION_TIMEOUT = 15_000 // 15 seconds
-
-interface PCRStats {
-	puppeteer: { launch: typeof launch }
-	executablePath: string
-}
 
 export interface BrowserActionResult {
 	screenshot?: string
@@ -35,31 +28,6 @@ export class BrowserSession {
 		this.storagePath = storagePath
 	}
 
-	private async ensureChromiumExists(): Promise<PCRStats> {
-		const puppeteerDir = path.join(this.storagePath, "puppeteer")
-		const dirExists = await this.fileExists(puppeteerDir)
-		if (!dirExists) {
-			await fs.mkdir(puppeteerDir, { recursive: true })
-		}
-
-		// if chromium doesn't exist, this will download it to path.join(puppeteerDir, ".chromium-browser-snapshots")
-		// if it does exist it will return the path to existing chromium
-		const stats: PCRStats = await PCR({
-			downloadPath: puppeteerDir,
-		})
-
-		return stats
-	}
-
-	private async fileExists(filePath: string): Promise<boolean> {
-		try {
-			await fs.access(filePath)
-			return true
-		} catch {
-			return false
-		}
-	}
-
 	/**
 	 * Gets the viewport size from environment or returns default
 	 */
@@ -74,12 +42,17 @@ export class BrowserSession {
 	 */
 	private async launchLocalBrowser(): Promise<void> {
 		console.error("Launching local browser")
-		const stats = await this.ensureChromiumExists()
-		this.browser = await stats.puppeteer.launch({
+		this.browser = await launch({
 			args: [
 				"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+				"--no-sandbox",
+				"--disable-setuid-sandbox",
+				"--disable-dev-shm-usage",
+				"--disable-accelerated-2d-canvas",
+				"--no-first-run",
+				"--no-zygote",
+				"--disable-gpu"
 			],
-			executablePath: stats.executablePath,
 			defaultViewport: this.getViewport(),
 			headless: false, // This is the key difference - headed mode for visibility
 		})
@@ -537,7 +510,7 @@ export class BrowserSession {
 		const { height } = this.getViewport()
 		const scrollAmount = direction === "down" ? height : -height
 
-		await page.evaluate((scrollHeight) => {
+		await page.evaluate((scrollHeight: number) => {
 			// @ts-ignore - window is available in browser context
 			window.scrollBy({
 				top: scrollHeight,
