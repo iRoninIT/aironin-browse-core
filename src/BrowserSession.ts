@@ -14,6 +14,13 @@ export interface BrowserActionResult {
 	logs?: string
 	currentUrl?: string
 	currentMousePosition?: string
+	// HTML source inspection data
+	htmlSource?: string
+	originalLength?: number
+	processedLength?: number
+	pageTitle?: string
+	metaData?: any
+	elementInfo?: any
 }
 
 export class BrowserSession {
@@ -559,5 +566,336 @@ export class BrowserSession {
 				windowId,
 			})
 		})
+	}
+
+	async getPageSource(includeComments: boolean = true): Promise<BrowserActionResult> {
+		if (!this.page) {
+			throw new Error("Browser is not launched. This may occur if the browser was automatically closed.")
+		}
+
+		const logs: string[] = []
+		let lastLogTs = Date.now()
+
+		const consoleListener = (msg: any) => {
+			if (msg.type() === "log") {
+				logs.push(msg.text())
+			} else {
+				logs.push(`[${msg.type()}] ${msg.text()}`)
+			}
+			lastLogTs = Date.now()
+		}
+
+		const errorListener = (err: Error) => {
+			logs.push(`[Page Error] ${err.toString()}`)
+			lastLogTs = Date.now()
+		}
+
+		// Add the listeners
+		this.page.on("console", consoleListener)
+		this.page.on("pageerror", errorListener)
+
+		try {
+			const htmlSource = await this.page.content()
+			
+			// If comments should be excluded, remove them
+			let processedSource = htmlSource
+			if (!includeComments) {
+				processedSource = htmlSource.replace(/<!--[\s\S]*?-->/g, '')
+			}
+
+			// Wait for console inactivity, with a timeout
+			await pWaitFor(() => Date.now() - lastLogTs >= 500, {
+				timeout: 3_000,
+				interval: 100,
+			}).catch(() => {})
+
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			return {
+				logs: logs.join("\n"),
+				currentUrl: this.page.url(),
+				currentMousePosition: this.currentMousePosition,
+				htmlSource: processedSource,
+				originalLength: htmlSource.length,
+				processedLength: processedSource.length,
+			}
+		} catch (err) {
+			if (!(err instanceof TimeoutError)) {
+				logs.push(`[Error] ${err instanceof Error ? err.toString() : String(err)}`)
+			}
+			
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			throw err
+		}
+	}
+
+	async getPageTitle(): Promise<BrowserActionResult> {
+		if (!this.page) {
+			throw new Error("Browser is not launched. This may occur if the browser was automatically closed.")
+		}
+
+		const logs: string[] = []
+		let lastLogTs = Date.now()
+
+		const consoleListener = (msg: any) => {
+			if (msg.type() === "log") {
+				logs.push(msg.text())
+			} else {
+				logs.push(`[${msg.type()}] ${msg.text()}`)
+			}
+			lastLogTs = Date.now()
+		}
+
+		const errorListener = (err: Error) => {
+			logs.push(`[Page Error] ${err.toString()}`)
+			lastLogTs = Date.now()
+		}
+
+		// Add the listeners
+		this.page.on("console", consoleListener)
+		this.page.on("pageerror", errorListener)
+
+		try {
+			const title = await this.page.title()
+
+			// Wait for console inactivity, with a timeout
+			await pWaitFor(() => Date.now() - lastLogTs >= 500, {
+				timeout: 3_000,
+				interval: 100,
+			}).catch(() => {})
+
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			return {
+				logs: logs.join("\n"),
+				currentUrl: this.page.url(),
+				currentMousePosition: this.currentMousePosition,
+				pageTitle: title,
+			}
+		} catch (err) {
+			if (!(err instanceof TimeoutError)) {
+				logs.push(`[Error] ${err instanceof Error ? err.toString() : String(err)}`)
+			}
+			
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			throw err
+		}
+	}
+
+	async getPageMeta(includeAllMeta: boolean = false): Promise<BrowserActionResult> {
+		if (!this.page) {
+			throw new Error("Browser is not launched. This may occur if the browser was automatically closed.")
+		}
+
+		const logs: string[] = []
+		let lastLogTs = Date.now()
+
+		const consoleListener = (msg: any) => {
+			if (msg.type() === "log") {
+				logs.push(msg.text())
+			} else {
+				logs.push(`[${msg.type()}] ${msg.text()}`)
+			}
+			lastLogTs = Date.now()
+		}
+
+		const errorListener = (err: Error) => {
+			logs.push(`[Page Error] ${err.toString()}`)
+			lastLogTs = Date.now()
+		}
+
+		// Add the listeners
+		this.page.on("console", consoleListener)
+		this.page.on("pageerror", errorListener)
+
+		try {
+			const metaData = await this.page.evaluate((includeAll: boolean) => {
+				const meta = {
+					title: (document as any).title,
+					description: '',
+					keywords: '',
+					author: '',
+					viewport: '',
+					robots: '',
+					ogTags: {} as any,
+					twitterTags: {} as any,
+					allMeta: [] as any[]
+				}
+				
+				// Get all meta tags
+				const metaTags = (document as any).querySelectorAll('meta')
+				metaTags.forEach((tag: any) => {
+					const name = tag.getAttribute('name') || tag.getAttribute('property')
+					const content = tag.getAttribute('content')
+					
+					if (includeAll) {
+						meta.allMeta.push({ name, content })
+					}
+					
+					// Common meta tags
+					if (name === 'description') meta.description = content
+					else if (name === 'keywords') meta.keywords = content
+					else if (name === 'author') meta.author = content
+					else if (name === 'viewport') meta.viewport = content
+					else if (name === 'robots') meta.robots = content
+					
+					// Open Graph tags
+					if (name && name.startsWith('og:')) {
+						meta.ogTags[name] = content
+					}
+					
+					// Twitter Card tags
+					if (name && name.startsWith('twitter:')) {
+						meta.twitterTags[name] = content
+					}
+				})
+				
+				return meta
+			}, includeAllMeta)
+
+			// Wait for console inactivity, with a timeout
+			await pWaitFor(() => Date.now() - lastLogTs >= 500, {
+				timeout: 3_000,
+				interval: 100,
+			}).catch(() => {})
+
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			return {
+				logs: logs.join("\n"),
+				currentUrl: this.page.url(),
+				currentMousePosition: this.currentMousePosition,
+				metaData: metaData,
+			}
+		} catch (err) {
+			if (!(err instanceof TimeoutError)) {
+				logs.push(`[Error] ${err instanceof Error ? err.toString() : String(err)}`)
+			}
+			
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			throw err
+		}
+	}
+
+	async inspectElement(coordinates: string, includeChildren: boolean = false): Promise<BrowserActionResult> {
+		if (!this.page) {
+			throw new Error("Browser is not launched. This may occur if the browser was automatically closed.")
+		}
+
+		const logs: string[] = []
+		let lastLogTs = Date.now()
+
+		const consoleListener = (msg: any) => {
+			if (msg.type() === "log") {
+				logs.push(msg.text())
+			} else {
+				logs.push(`[${msg.type()}] ${msg.text()}`)
+			}
+			lastLogTs = Date.now()
+		}
+
+		const errorListener = (err: Error) => {
+			logs.push(`[Page Error] ${err.toString()}`)
+			lastLogTs = Date.now()
+		}
+
+		// Add the listeners
+		this.page.on("console", consoleListener)
+		this.page.on("pageerror", errorListener)
+
+		try {
+			const [x, y] = coordinates.split(",").map(Number)
+			
+			if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) {
+				throw new Error(`Invalid coordinates: ${coordinates}. Expected format: "x,y"`)
+			}
+			
+			// Get element at coordinates
+			const element = await this.page.evaluateHandle((x: number, y: number) => {
+				return (document as any).elementFromPoint(x, y)
+			}, x, y)
+			
+			if (!element) {
+				throw new Error(`No element found at coordinates ${coordinates}`)
+			}
+			
+			// Get element properties
+			const elementInfo = await this.page.evaluate((el: any, includeChildren: boolean) => {
+				if (!el) return null
+				
+				const rect = el.getBoundingClientRect()
+				const computedStyle = (window as any).getComputedStyle(el)
+				
+				return {
+					tagName: el.tagName,
+					id: el.id,
+					className: el.className,
+					textContent: el.textContent?.substring(0, 200) + (el.textContent?.length > 200 ? '...' : ''),
+					innerHTML: includeChildren ? el.innerHTML : undefined,
+					outerHTML: el.outerHTML,
+					attributes: Array.from(el.attributes).map((attr: any) => ({
+						name: attr.name,
+						value: attr.value
+					})),
+					rect: {
+						x: rect.x,
+						y: rect.y,
+						width: rect.width,
+						height: rect.height
+					},
+					computedStyle: {
+						display: computedStyle.display,
+						visibility: computedStyle.visibility,
+						opacity: computedStyle.opacity,
+						backgroundColor: computedStyle.backgroundColor,
+						color: computedStyle.color,
+						fontSize: computedStyle.fontSize,
+						fontWeight: computedStyle.fontWeight
+					}
+				}
+			}, element, includeChildren)
+
+			// Wait for console inactivity, with a timeout
+			await pWaitFor(() => Date.now() - lastLogTs >= 500, {
+				timeout: 3_000,
+				interval: 100,
+			}).catch(() => {})
+
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			return {
+				logs: logs.join("\n"),
+				currentUrl: this.page.url(),
+				currentMousePosition: this.currentMousePosition,
+				elementInfo: elementInfo,
+			}
+		} catch (err) {
+			if (!(err instanceof TimeoutError)) {
+				logs.push(`[Error] ${err instanceof Error ? err.toString() : String(err)}`)
+			}
+			
+			// this.page.removeAllListeners() <- causes the page to crash!
+			this.page.off("console", consoleListener)
+			this.page.off("pageerror", errorListener)
+
+			throw err
+		}
 	}
 } 
